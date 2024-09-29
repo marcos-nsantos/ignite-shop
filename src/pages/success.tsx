@@ -33,31 +33,44 @@ export default function Success({ costumerName, product }: SuccessProps) {
 }
 
 export const getServerSideProps: GetServerSideProps = async ({ query }) => {
-  const sessionId = String(query.session_id);
-  let session;
+  if (!query.session_id) {
+    return {
+      redirect: {
+        destination: "/",
+        permanent: false,
+      },
+    };
+  }
 
-  try {
-    session = await stripe.checkout.sessions.retrieve(sessionId, {
-      expand: ["line_items", "line_items.data.price.product"],
-    });
-  } catch (error) {
-    console.error("Error retrieving session:", error);
+  const sessionId = String(query.session_id);
+
+  const session = await stripe.checkout.sessions.retrieve(sessionId, {
+    expand: ["line_items", "line_items.data.price.product"],
+  });
+
+  if (!session.customer_details) {
+    console.error("Customer details missing in Stripe session:", sessionId);
     return {
       notFound: true,
     };
   }
 
-  const customerName = session.customer_details?.name ?? "Unknown Customer";
+  const costumerName = session.customer_details.name;
+  const product = session.line_items?.data[0]?.price?.product as Stripe.Product;
 
-  const product = session.line_items?.data?.[0]?.price
-    ?.product as Stripe.Product;
+  if (!product) {
+    console.error("Product information missing in Stripe session:", sessionId);
+    return {
+      notFound: true,
+    };
+  }
 
   return {
     props: {
-      customerName,
+      costumerName,
       product: {
-        name: product?.name ?? "Unknown Product",
-        imageUrl: product?.images?.[0] ?? "default_image_url",
+        name: product.name,
+        imageUrl: product.images?.[0] || "",
       },
     },
   };
